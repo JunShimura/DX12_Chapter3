@@ -42,6 +42,8 @@ const unsigned int window_height = 720;
 ID3D12Device* _dev = nullptr;
 IDXGIFactory6* _dxgiFactory = nullptr;
 IDXGISwapChain4* _swapchain = nullptr;
+ID3D12CommandAllocator* _cmdAllocator = nullptr;
+ID3D12GraphicsCommandList* _cmdList = nullptr;
 
 #ifdef _DEBUG
 int main()
@@ -78,7 +80,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		nullptr,									// メニューハンドル
 		w.hInstance,							// 呼び出しアプリケーションハンドル
 		nullptr);									// 追加パラメーター
-	
+
 	// DirectX12周りの初期化
 	D3D_FEATURE_LEVEL levels[] =
 	{
@@ -87,7 +89,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D_FEATURE_LEVEL_11_1,
 		D3D_FEATURE_LEVEL_11_0
 	};
-													
+
 	//Direct3Dデバイスの初期化
 	D3D_FEATURE_LEVEL featureLevel;
 	for (auto lv : levels) {
@@ -117,7 +119,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		adapters.push_back(tmpAdapter);
 	}
 
-	for(auto adpt:adapters)
+	for (auto adpt : adapters)
 	{
 		DXGI_ADAPTER_DESC adesc = {};
 		adpt->GetDesc(&adesc);	//	アダプターの説明オブジェクト取得
@@ -128,10 +130,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		if (strDesc.find(L"NVIDIA") != std::string::npos)
 		{
 			tmpAdapter = adpt;
-			break;
+			break;	// 生成可能なバージョンが見つかったらループを打ち切り
 		}
 	}
 
+	result = _dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&_cmdAllocator));
+	if (result != S_OK) {
+		DebugOutputFormatString("FAILED CreateCommandAllocator");
+		return -1;
+	}
+	result = _dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, _cmdAllocator, nullptr, IID_PPV_ARGS(&_cmdList));
+	if (result != S_OK) {
+		DebugOutputFormatString("FAILED CreateCommandList");
+		return -1;
+	}
 	// ウィンドウ表示
 	ShowWindow(hwnd, SW_SHOW);
 
