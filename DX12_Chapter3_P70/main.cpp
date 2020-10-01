@@ -220,6 +220,31 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	}
 
+	// 3.3.2 スワップチェーンを動作させる
+	// アロケーターをリセット
+	result = _cmdAllocator->Reset();	
+	//レンダーターゲットの設定
+	auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
+	auto rtvH = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
+	rtvH.ptr += bbIdx * _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	_cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr);
+
+	//レンダーターゲットのクリア
+	//画面クリア
+	float clearColor[] = { 1.0f,1.0f,0.0f,1.0f };//黄色
+	_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
+
+	// ためておいた命令を実行する
+	// 命令のクローズ
+	_cmdList->Close();
+	// コマンドリストの実行
+	ID3D12CommandList* cmdlists[] = { _cmdList };
+	_cmdQueue->ExecuteCommandLists(1, cmdlists);
+	_cmdAllocator->Reset();		// キューをクリア
+	_cmdList->Reset(_cmdAllocator, nullptr);	// 再びコマンドリストをためる準備
+
+	// フリップ
+	_swapchain->Present(1, 0);
 
 
 	// ウィンドウ表示
