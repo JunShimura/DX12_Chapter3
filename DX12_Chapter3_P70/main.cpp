@@ -42,8 +42,9 @@ const unsigned int window_height = 720;
 ID3D12Device* _dev = nullptr;
 IDXGIFactory6* _dxgiFactory = nullptr;
 IDXGISwapChain4* _swapchain = nullptr;
-ID3D12CommandAllocator* _cmdAllocator = nullptr;
-ID3D12GraphicsCommandList* _cmdList = nullptr;
+ID3D12CommandAllocator* _cmdAllocator = nullptr;	//P72
+ID3D12GraphicsCommandList* _cmdList = nullptr;		//P72
+ID3D12CommandQueue* _cmdQueue = nullptr;			//P74
 
 #ifdef _DEBUG
 int main()
@@ -90,18 +91,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D_FEATURE_LEVEL_11_0
 	};
 
-	//Direct3Dデバイスの初期化
-	D3D_FEATURE_LEVEL featureLevel;
-	for (auto lv : levels) {
-		if (D3D12CreateDevice(nullptr, lv, IID_PPV_ARGS(&_dev)) == S_OK) {
-			featureLevel = lv;
-			break;	//生成可能なバージョンが見付かったら打ち切り
-		}
-	}
-	if (_dev == nullptr) {
-		DebugOutputFormatString("FAILED D3D12CreateDevice");
-		return -1;
-	}
+
 	auto result = CreateDXGIFactory1(IID_PPV_ARGS(&_dxgiFactory));
 	if (result != S_OK) {
 		DebugOutputFormatString("FAILED CreateDXGIFactory1");
@@ -134,6 +124,21 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		}
 	}
 
+	//Direct3Dデバイスの初期化　P68
+	D3D_FEATURE_LEVEL featureLevel;
+	for (auto lv : levels) {
+		if (D3D12CreateDevice(tmpAdapter, lv, IID_PPV_ARGS(&_dev)) == S_OK) {
+			featureLevel = lv;
+			break;	//生成可能なバージョンが見付かったら打ち切り
+		}
+	}
+	if (_dev == nullptr) {
+		DebugOutputFormatString("FAILED D3D12CreateDevice");
+		return -1;
+	}
+
+	// コマンドリストの作成とコマンドアロケーター
+	// P73
 	result = _dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&_cmdAllocator));
 	if (result != S_OK) {
 		DebugOutputFormatString("FAILED CreateCommandAllocator");
@@ -145,6 +150,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		return -1;
 	}
 
+	// コマンドキュー
+	// P74
 	D3D12_COMMAND_QUEUE_DESC cmdQueueDesc = {};
 
 	// タイムアウト無し
@@ -152,8 +159,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	// アダプターを一つしか使わないときは０で好い
 	cmdQueueDesc.NodeMask = 0;
-
-	ID3D12CommandQueue* _cmdQueue = nullptr;
 
 	// プライオリティは特に指定なし
 	cmdQueueDesc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
@@ -164,7 +169,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// キュー生成
 	result = _dev->CreateCommandQueue(&cmdQueueDesc, IID_PPV_ARGS(&_cmdQueue));//コマンドキュー生成
 
-	// スワップチェーン生成P79
+	// スワップチェーン生成
+	// P79
 	DXGI_SWAP_CHAIN_DESC1 swapchainDesc = {};
 	swapchainDesc.Width = window_width;
 	swapchainDesc.Height = window_height;
@@ -178,6 +184,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;// 特に指定なし
 	swapchainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;// ウィンドウ⇔フルスクリーン切り替え可能
 	swapchainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+
 	result = _dxgiFactory->CreateSwapChainForHwnd(
 		_cmdQueue,
 		hwnd,
@@ -200,7 +207,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE; //  特に指定なし
 	ID3D12DescriptorHeap* rtvHeaps = nullptr;
 	result = _dev->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&rtvHeaps));
-
 	if (result != S_OK) {
 		DebugOutputFormatString("FAILED CreateDescriptorHeap");
 		return -1;
@@ -220,33 +226,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	}
 
-	// 3.3.2 スワップチェーンを動作させる
-	// アロケーターをリセット
-	result = _cmdAllocator->Reset();	
-	//レンダーターゲットの設定
-	auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
-	auto rtvH = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
-	rtvH.ptr += bbIdx * _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	_cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr);
-
-	//レンダーターゲットのクリア
-	//画面クリア
-	float clearColor[] = { 1.0f,1.0f,0.0f,1.0f };//黄色
-	_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
-
-	// ためておいた命令を実行する
-	// 命令のクローズ
-	_cmdList->Close();
-	// コマンドリストの実行
-	ID3D12CommandList* cmdlists[] = { _cmdList };
-	_cmdQueue->ExecuteCommandLists(1, cmdlists);
-	_cmdAllocator->Reset();		// キューをクリア
-	_cmdList->Reset(_cmdAllocator, nullptr);	// 再びコマンドリストをためる準備
-
-	// フリップ
-	_swapchain->Present(1, 0);
-
-
 	// ウィンドウ表示
 	ShowWindow(hwnd, SW_SHOW);
 
@@ -264,6 +243,35 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		{
 			break;
 		}
+		//////////////////////////////////////////////
+		// DirectXの処理
+		// 3.3.6 スワップチェーンを動作させる
+		// アロケーターをリセット
+		result = _cmdAllocator->Reset();
+		//レンダーターゲットの設定
+		auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
+		auto rtvH = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
+		rtvH.ptr += bbIdx * _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+		_cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr);
+
+		//レンダーターゲットのクリア
+		//画面クリア
+		float clearColor[] = { 1.0f,1.0f,0.0f,1.0f };//黄色
+		_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
+
+		// ためておいた命令を実行する
+		// 命令のクローズ
+		_cmdList->Close();
+		// コマンドリストの実行
+		ID3D12CommandList* cmdlists[] = { _cmdList };
+		_cmdQueue->ExecuteCommandLists(1, cmdlists);
+		_cmdAllocator->Reset();		// キューをクリア
+		_cmdList->Reset(_cmdAllocator, nullptr);	// 再びコマンドリストをためる準備
+
+		// フリップ
+		_swapchain->Present(1, 0);
+		/////////////////////////////
+
 	}
 
 	//もうこのクラスは使わないので登録解除する
