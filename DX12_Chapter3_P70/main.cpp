@@ -203,7 +203,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
 
 	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;	//レンダーターゲットビューなのでRTV
-	heapDesc.NodeMask = 0; heapDesc.NumDescriptors = 2; //  表裏の 2 つ
+	heapDesc.NodeMask = 0;
+	heapDesc.NumDescriptors = 2; //  表裏の 2 つ
 	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE; //  特に指定なし
 	ID3D12DescriptorHeap* rtvHeaps = nullptr;
 	result = _dev->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&rtvHeaps));
@@ -217,13 +218,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	result = _swapchain->GetDesc(&swcDesc);
 	std::vector<ID3D12Resource*> _backBuffers(swcDesc.BufferCount);
 	D3D12_CPU_DESCRIPTOR_HANDLE handle = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
-	for (int idx = 0; idx < swcDesc.BufferCount; ++idx)
+	for (int i = 0; i < swcDesc.BufferCount; ++i)
 	{
-		// レンダーターゲットビューを生成する
-		_dev->CreateRenderTargetView(_backBuffers[idx], nullptr, handle);
-		// ポインターをずらす
-		handle.ptr += _dev->GetDescriptorHandleIncrementSize(
-			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+		result = _swapchain->GetBuffer(i, IID_PPV_ARGS(&_backBuffers[i]));
+		_dev->CreateRenderTargetView(_backBuffers[i], nullptr, handle);
+		handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	}
 
 	// ウィンドウ表示
@@ -247,7 +246,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		// DirectXの処理
 		// 3.3.6 スワップチェーンを動作させる
 		// アロケーターをリセット
-		result = _cmdAllocator->Reset();
+		// result = _cmdAllocator->Reset();
 		//レンダーターゲットの設定
 		auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
 		auto rtvH = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
